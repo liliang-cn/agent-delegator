@@ -80,14 +80,6 @@ Returns JSON: `agent`, `exit_code`, `duration_ms`, `output`, `stderr`, `timed_ou
 | `DELEGATOR_HERMES_BIN`  | `/var/lib/openclaw/hermes/hermes` |
 | `DELEGATOR_DEFAULT_CWD` | `/var/lib/openclaw/workspace`     |
 
-## Notes
-
-- The child's stdin is `/dev/null`. `pi -p` waits for EOF on a non-TTY stdin,
-  so inheriting the MCP pipe would hang every call.
-- A timeout kills the whole process group, not just the top process.
-- To check it is really delegating, ask for something the main model cannot
-  invent, e.g. `@pi run cat /etc/hostname; whoami`.
-
 ## License
 
 MIT
