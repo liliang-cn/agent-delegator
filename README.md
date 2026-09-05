@@ -1,73 +1,92 @@
 # agent-delegator
 
-A small MCP (stdio) server that lets one agent hand a task to another agent CLI
-installed on the same host. Built for [openclaw](https://github.com/openclaw/openclaw):
-when a chat message says `@pi ...` or `@hermes ...`, the main agent calls
-`call_pi` / `call_hermes` and relays the sub-agent's answer.
+MCP server (stdio) that hands a task to another agent CLI on the same host.
+Say `@pi ...` or `@hermes ...` to your main agent and it calls `call_pi` /
+`call_hermes`, then relays the sub-agent's answer.
 
-Sub-agents wired in by default:
+Built on the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk).
 
-| tool          | runs                                   | one-shot flag |
-|---------------|----------------------------------------|---------------|
-| `call_pi`     | [pi](https://github.com/earendil-works/pi) coding agent | `pi -p <prompt>` |
-| `call_hermes` | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | `hermes -z <prompt>` |
-
-Arguments: `prompt` (required), `cwd` (default `/var/lib/openclaw/workspace`),
-`timeout_seconds` (1–600, default 300). The result is JSON:
-`agent`, `exit_code`, `duration_ms`, `output`, `stderr`, `timed_out`, `truncated`.
-
-## Why not a ten-line Python script
-
-The first version was one, and every `call_pi` timed out. Two things this
-server does on purpose:
-
-- **Child stdin is `/dev/null`.** `pi -p` blocks until EOF on a non-TTY stdin;
-  inheriting the MCP JSON-RPC pipe means EOF never comes.
-- **Timeouts kill the whole process group**, so a wedged node/python child does
-  not outlive the request.
-
-Tool descriptions are written so the model treats `@pi` / `@hermes` as a hard
-instruction to call the tool and never fabricates a reply when the call fails.
-
-## Build
+## Install
 
 ```sh
-go build -o agent-delegator .
-# cross-compile for a Linux fleet
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o agent-delegator-arm64 .
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o agent-delegator-amd64 .
+go install github.com/liliang-cn/agent-delegator@latest
 ```
 
-## Configure
+Or build from source:
 
-Environment variables (all optional):
+```sh
+git clone https://github.com/liliang-cn/agent-delegator
+cd agent-delegator
+go build -o agent-delegator .
+sudo install -m 0755 agent-delegator /usr/local/bin/
+```
 
-| variable                | default                          |
-|-------------------------|----------------------------------|
-| `DELEGATOR_PI_BIN`      | `/var/lib/openclaw/pi/pi`        |
-| `DELEGATOR_HERMES_BIN`  | `/var/lib/openclaw/hermes/hermes`|
-| `DELEGATOR_DEFAULT_CWD` | `/var/lib/openclaw/workspace`    |
+Cross-compile for a Linux box:
 
-Register with openclaw (request timeout must exceed the tool's own 600 s cap):
+```sh
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o agent-delegator-amd64 .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o agent-delegator-arm64 .
+```
+
+## Add it to your MCP client
+
+openclaw:
 
 ```sh
 openclaw mcp add agent-delegator --command /usr/local/bin/agent-delegator --timeout 630
 openclaw mcp reload
 ```
 
-Any MCP client that speaks stdio works the same way.
+Claude Code:
 
-## Verify it is really delegating
-
-Ask for something the calling model cannot make up, then check the host:
-
-```
-@pi run `cat /etc/hostname; whoami` and reply with exactly those two lines
+```sh
+claude mcp add agent-delegator -- /usr/local/bin/agent-delegator
 ```
 
-If the reply is your hostname and the service user, the sub-agent ran. A
-plausible-looking answer with no tool call in the gateway log means the model
-improvised.
+Any other client, in its JSON config:
+
+```json
+{
+  "mcpServers": {
+    "agent-delegator": {
+      "command": "/usr/local/bin/agent-delegator",
+      "env": {
+        "DELEGATOR_PI_BIN": "/usr/local/bin/pi",
+        "DELEGATOR_HERMES_BIN": "/usr/local/bin/hermes"
+      }
+    }
+  }
+}
+```
+
+Set the client's per-request timeout above 600 s, otherwise long tasks are cut
+off by the client before the tool returns.
+
+## Tools
+
+| tool          | runs                     | agent |
+|---------------|--------------------------|-------|
+| `call_pi`     | `pi -p <prompt>`         | [pi](https://github.com/earendil-works/pi) |
+| `call_hermes` | `hermes -z <prompt>`     | [Hermes Agent](https://github.com/NousResearch/hermes-agent) |
+
+Arguments: `prompt` (required), `cwd`, `timeout_seconds` (1–600, default 300).
+Returns JSON: `agent`, `exit_code`, `duration_ms`, `output`, `stderr`, `timed_out`.
+
+## Environment
+
+| variable                | default                           |
+|-------------------------|-----------------------------------|
+| `DELEGATOR_PI_BIN`      | `/var/lib/openclaw/pi/pi`         |
+| `DELEGATOR_HERMES_BIN`  | `/var/lib/openclaw/hermes/hermes` |
+| `DELEGATOR_DEFAULT_CWD` | `/var/lib/openclaw/workspace`     |
+
+## Notes
+
+- The child's stdin is `/dev/null`. `pi -p` waits for EOF on a non-TTY stdin,
+  so inheriting the MCP pipe would hang every call.
+- A timeout kills the whole process group, not just the top process.
+- To check it is really delegating, ask for something the main model cannot
+  invent, e.g. `@pi run cat /etc/hostname; whoami`.
 
 ## License
 
