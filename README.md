@@ -1,10 +1,7 @@
 # agent-delegator
 
-MCP server (stdio) that hands a task to another agent CLI on the same host.
-Say `@pi ...` or `@hermes ...` to your main agent and it calls `call_pi` /
-`call_hermes`, then relays the sub-agent's answer.
-
-Built on the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk).
+MCP server that runs a task with another agent CLI on the same host.
+Say `@pi ...` or `@hermes ...` and the main agent calls `call_pi` / `call_hermes`.
 
 ## Install
 
@@ -12,65 +9,39 @@ Built on the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sd
 go install github.com/liliang-cn/agent-delegator@latest
 ```
 
-Or build from source:
-
-```sh
-git clone https://github.com/liliang-cn/agent-delegator
-cd agent-delegator
-go build -o agent-delegator .
-sudo install -m 0755 agent-delegator /usr/local/bin/
-```
-
-Cross-compile for a Linux box:
-
-```sh
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o agent-delegator-amd64 .
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o agent-delegator-arm64 .
-```
-
-## Add it to your MCP client
+## Use
 
 openclaw:
 
 ```sh
-openclaw mcp add agent-delegator --command /usr/local/bin/agent-delegator --timeout 630
+openclaw mcp add agent-delegator --command agent-delegator --timeout 630
 openclaw mcp reload
 ```
 
 Claude Code:
 
 ```sh
-claude mcp add agent-delegator -- /usr/local/bin/agent-delegator
+claude mcp add agent-delegator -- agent-delegator
 ```
 
-Any other client, in its JSON config:
+Other clients:
 
 ```json
 {
   "mcpServers": {
-    "agent-delegator": {
-      "command": "/usr/local/bin/agent-delegator",
-      "env": {
-        "DELEGATOR_PI_BIN": "/usr/local/bin/pi",
-        "DELEGATOR_HERMES_BIN": "/usr/local/bin/hermes"
-      }
-    }
+    "agent-delegator": { "command": "agent-delegator" }
   }
 }
 ```
 
-Set the client's per-request timeout above 600 s, otherwise long tasks are cut
-off by the client before the tool returns.
-
 ## Tools
 
-| tool          | runs                     | agent |
-|---------------|--------------------------|-------|
-| `call_pi`     | `pi -p <prompt>`         | [pi](https://github.com/earendil-works/pi) |
-| `call_hermes` | `hermes -z <prompt>`     | [Hermes Agent](https://github.com/NousResearch/hermes-agent) |
+| tool          | runs               |
+|---------------|--------------------|
+| `call_pi`     | `pi -p <prompt>`   |
+| `call_hermes` | `hermes -z <prompt>` |
 
-Arguments: `prompt` (required), `cwd`, `timeout_seconds` (1–600, default 300).
-Returns JSON: `agent`, `exit_code`, `duration_ms`, `output`, `stderr`, `timed_out`.
+Arguments: `prompt` (required), `cwd`, `timeout_seconds` (default 300, max 600).
 
 ## Environment
 
